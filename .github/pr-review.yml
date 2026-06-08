@@ -1,0 +1,29 @@
+# Example configuration for pr-review-agents
+# Copy this to your repository's .github/pr-review.yml and customize
+
+# Enable/disable specific reviewers
+reviewers:
+  architecture: true
+  reliability: true
+  security: true
+
+# Minimum severity to report (low, medium, high)
+min_severity: low
+
+# File patterns to exclude from review
+exclude_patterns:
+  - "**/*.test.js"
+  - "**/*.test.ts"
+  - "**/*.spec.js"
+  - "**/*.spec.ts"
+  - "**/test/**"
+  - "**/tests/**"
+  - "**/__tests__/**"
+  - "**/fixtures/**"
+  - "**/mocks/**"
+  - "package-lock.json"
+  - "yarn.lock"
+  - "pnpm-lock.yaml"
+
+# Maximum PR size (files changed) before skipping review
+max_pr_size: 50
