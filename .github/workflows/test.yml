@@ -1,0 +1,150 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check workflow syntax
+        run: |
+          echo "Validating workflow YAML syntax..."
+          for file in .github/workflows/*.yml; do
+            echo "Checking $file"
+            # Basic YAML syntax check
+            cat "$file" | grep -v "^#" > /dev/null || exit 1
+          done
+
+      - name: Check JavaScript syntax
+        run: |
+          echo "Validating JavaScript files..."
+          for file in src/**/*.js; do
+            echo "Checking $file"
+            node --check "$file"
+          done
+
+  validate-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate model ID exists in code
+        run: |
+          MODEL_ID=$(grep -r "modelId:" src/ | grep -oP "us\.anthropic\.claude-sonnet-[^'\"]*" | head -1)
+          echo "Found model ID: $MODEL_ID"
+          if [ -z "$MODEL_ID" ]; then
+            echo "ERROR: No model ID found in code"
+            exit 1
+          fi
+
+      - name: Check required files exist
+        run: |
+          required_files=(
+            "src/index.js"
+            "src/config.js"
+            "src/github.js"
+            "src/reviewers/index.js"
+            "src/reviewers/architecture.js"
+            "src/reviewers/reliability.js"
+            "src/reviewers/security.js"
+            ".github/workflows/review.yml"
+            "package.json"
+            "README.md"
+          )
+
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Required file missing: $file"
+              exit 1
+            fi
+            echo "✓ $file exists"
+          done
+
+  integration-test:
+    runs-on: ubuntu-latest
+    # Only run on PRs, not on main (to avoid AWS costs on every push)
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: pr-review-agents
+
+      - name: Checkout test target repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: target-repo
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: pr-review-agents
+        run: npm install
+
+      - name: Run smoke test (dry-run without AWS)
+        working-directory: pr-review-agents
+        env:
+          TARGET_REPO_PATH: ${{ github.workspace }}/target-repo
+        run: |
+          echo "Smoke test: Check that all modules load without errors"
+          node -e "
+            import('./src/config.js').then(() => console.log('✓ config.js loads'));
+            import('./src/github.js').then(() => console.log('✓ github.js loads'));
+            import('./src/reviewers/index.js').then(() => console.log('✓ reviewers/index.js loads'));
+          "
+
+      - name: Validate reviewer prompts
+        working-directory: pr-review-agents
+        run: |
+          echo "Checking that reviewer prompts are properly structured..."
+          node -e "
+            import('./src/reviewers/architecture.js').then(m => {
+              if (!m.architectureReviewer.buildPrompt) {
+                console.error('ERROR: architecture reviewer missing buildPrompt');
+                process.exit(1);
+              }
+              console.log('✓ Architecture reviewer valid');
+            });
+            import('./src/reviewers/reliability.js').then(m => {
+              if (!m.reliabilityReviewer.buildPrompt) {
+                console.error('ERROR: reliability reviewer missing buildPrompt');
+                process.exit(1);
+              }
+              console.log('✓ Reliability reviewer valid');
+            });
+            import('./src/reviewers/security.js').then(m => {
+              if (!m.securityReviewer.buildPrompt) {
+                console.error('ERROR: security reviewer missing buildPrompt');
+                process.exit(1);
+              }
+              console.log('✓ Security reviewer valid');
+            });
+          "

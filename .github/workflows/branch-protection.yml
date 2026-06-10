@@ -1,0 +1,48 @@
+name: Branch Protection
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  prevent-breaking-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for breaking changes
+        run: |
+          echo "Checking for potentially breaking changes..."
+
+          # Check if model ID changed
+          if git diff origin/main...HEAD -- src/reviewers/index.js | grep -q "modelId:"; then
+            echo "⚠️  WARNING: Model ID changed. Verify it works in Bedrock before merging!"
+            git diff origin/main...HEAD -- src/reviewers/index.js | grep -A2 -B2 "modelId:"
+          fi
+
+          # Check if workflow interface changed
+          if git diff origin/main...HEAD -- .github/workflows/review.yml | grep -E "(secrets:|workflow_call:)"; then
+            echo "⚠️  WARNING: Workflow interface changed. This may break calling repos!"
+            git diff origin/main...HEAD -- .github/workflows/review.yml | grep -A5 -B5 -E "(secrets:|workflow_call:)"
+          fi
+
+          # Check if required permissions changed
+          if git diff origin/main...HEAD -- .github/workflows/review.yml | grep "permissions:"; then
+            echo "⚠️  WARNING: Permissions changed. Calling repos may need updates!"
+            git diff origin/main...HEAD -- .github/workflows/review.yml | grep -A10 "permissions:"
+          fi
+
+          echo "✓ Breaking change check complete"
+
+      - name: Remind about dependent repos
+        run: |
+          echo ""
+          echo "📝 REMINDER: This repo is used by:"
+          echo "  - tracells-db"
+          echo "  - email-processing"
+          echo "  - redcap"
+          echo ""
+          echo "After merging, they will automatically use the new version."
+          echo "Monitor their next PR to ensure the workflow still works."
