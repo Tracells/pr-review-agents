@@ -109,7 +109,7 @@ cat > /tmp/bedrock-policy.json <<EOF
         "bedrock:InvokeModel"
       ],
       "Resource": [
-        "arn:aws:bedrock:us-east-1::foundation-model/us.anthropic.claude-sonnet-4-5-v1:0"
+        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0"
       ]
     }
   ]
